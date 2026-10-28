@@ -1,0 +1,16 @@
+# Local Python environment
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Executed notebooks written by run_notebooks.sh
+executed/
+
+# Data the SED notebook downloads or writes
+sn_fits.h5
+all_galaxies.h5
+fsps/
+
+__pycache__/
