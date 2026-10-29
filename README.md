@@ -62,7 +62,17 @@ send changes upstream, or the whole file gets reformatted.
 
 ## Set up the environment
 
-Python 3.12 is the tested version (upstream tests 3.10–3.13).
+### With the LSST stack (Mac, recommended)
+
+The working environment is one conda env built on the LSST Science Pipelines (`stackvana`, Python 3.13)
+with the project's packages added on top, so the Rubin PSFs can be evaluated in the same place as
+everything else. The full steps, including a kernel wrapper Jupyter needs to see the stack, are in
+[`setup_on_mac.md`](setup_on_mac.md).
+
+### Without the stack (plain venv)
+
+Enough for every notebook except the Rubin PSFs. Python 3.12 is the version the lock file was built
+for (upstream tests 3.10–3.13).
 
 ```bash
 python3.12 -m venv .venv
@@ -87,12 +97,13 @@ With conda instead of venv, run `conda create -n desc-hack-2026 python=3.12` and
 ### Optional: simulating the Roman PSF
 
 `galsim` (in `requirements.txt`) provides `galsim.roman.getPSF(SCA, bandpass)`, the model the
-Roman simulation used. The Roman PSF is chromatic, so drawing it needs a source SED. On Linux
-ARM there is no prebuilt wheel and pip compiles it, which needs the FFTW headers; the exact
-commands are in the comment in `requirements.txt`.
+Roman simulation used. The Roman PSF is chromatic, so drawing it needs a source SED. On the Mac
+it comes prebuilt from conda-forge. On Linux ARM there is no prebuilt wheel and pip compiles it,
+which needs the FFTW headers; the exact commands are in the comment in `requirements.txt`.
 
 The Rubin PSF is stored in each `calexp` image as `PsfexPsf` extensions. Evaluating it needs the
-LSST Science Pipelines (`lsst.afw`), which is not available as a conda or pip package on Linux ARM.
+LSST Science Pipelines (`lsst.afw`), which the stack environment above provides. The stack is not
+available as a conda or pip package on Linux ARM.
 
 ### Optional: running new SED fits
 
