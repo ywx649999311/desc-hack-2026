@@ -61,17 +61,31 @@ New pipeline, run in order:
 
 Shared helpers are in `notebooks/ou_utils.py`. Current parameter choices (all in each notebook's first cell):
 
-- Selection: catalog band `i`, `PEAK_MAG_MAX = 23`, no contrast or size cut, ranked by host half-light
-  radius (larger of disk and spheroid), largest first, `REQUIRE_IN_TDS = True`. Coverage required: Roman J129
-  and Rubin r images within peak MJD ± 30 days. Stops at 20 targets. Only the TDS-centre HEALPix region is
-  searched; add regions via `REGIONS`.
+- Selection (changed 2026-10-29 at the user's request): catalog band `i`, `PEAK_MAG_MAX = 23`,
+  `HOST_SIZE_ARCSEC = (1.0, 3.0)` (half-light radius, larger of disk and spheroid), `DELTA_MAG = (None, 2.0)`
+  (peak - host at most +2), ranked by host size, largest first, `REQUIRE_IN_TDS = True`. Coverage required: Roman
+  J129 and Rubin r images within peak MJD ± 30 days. Stops at 20 targets. Only the TDS-centre HEALPix region is
+  searched (user's choice); the 12 regions overlapping the TDS are 10051, 10052, 10178, 10179, 10180, 10306,
+  10307, 10308, 10430, 10431, 10550, 10551. Range limits may now have an open end (`None`).
+  - Result: 711 after peak/TDS cuts, 644 with peak - host <= 2, 23 with host 1-3 arcsec, **7 selected** after the
+    coverage check (Rubin coverage removes most). First target 50084332 (CC SN, host 2.32 arcsec, delta +0.85).
+  - Why not `delta < 0` (the user first asked for it): large hosts are bright (median delta +2.3 mag for 1-3 arcsec
+    hosts), so only 2 candidates in the centre region (9 in all 12 regions) pass both cuts, before coverage.
+    Also explained to the user: outshining the whole host is not needed for detection, since a 1-3 arcsec host's
+    light is spread over many PSF areas; `PEAK_MAG_MAX` sets detectability. Counts with host 1-3 arcsec across all
+    12 regions: delta < 0: 9, < 0.5: 21, < 1: 44, < 2: 110.
+  - The notebook was rewritten with line-by-line comments for the user, who wanted to understand each cell.
 - Cutouts: 20 arcsec wide, **centred on the host** (`CENTER_ON = "host"`), native orientation
-  (`NORTH_UP = False`), `MAX_TARGETS = 5`, up to 5 epochs per target. A cyan ring marks the transient in the montage.
-- Each cutout FITS file: primary HDU is the science image, extensions hold the error and quality arrays
-  (Roman `SCI`/`ERR`/`DQ`, Rubin `IMAGE`/`VARIANCE`/`MASK`), same pixel grid and WCS (with SIP). Header keys:
-  `TARGETID BAND MJD OBSID SRCIMG TRA TDEC CENTERON SIZEARCS NORTHUP LAYERS NANFRAC`.
+  (`NORTH_UP = False`), `PSF = True`, `MAX_TARGETS = 1` (user asked for 1 target while testing), up to 5 epochs
+  per target. A cyan ring marks the transient in the montage.
+- Each cutout FITS file, same HDU order for both instruments (user's choice, 2026-10-29): image, variance, flags.
+  Roman `SCI, VARIANCE, DQ, BKGNOISE, PSF`; Rubin `IMAGE, VARIANCE, MASK, PSF` (order in `ou.CUTOUT_ORDER`; what
+  is read from the source image in `ou.CUTOUT_LAYERS`). Same pixel grid and WCS (with SIP). Header keys:
+  `TARGETID BAND MJD OBSID SRCIMG SRCX SRCY TRA TDEC CENTERON SIZEARCS NORTHUP LAYERS NANFRAC`
+  (`SRCX SRCY` = cutout centre on the source image, 0-based pixels; also `src_x`, `src_y` in the manifest).
   Flags are never interpolated (nearest neighbour when north-up); flags are 0 off the detector.
-- Resume: existing cutouts are skipped only if size, centring, rotation and `LAYERS` all match; otherwise rewritten.
+- Resume: existing cutouts are skipped only if size, centring, rotation and `LAYERS` (which includes `PSF`) all
+  match and `SRCX` is present; otherwise rewritten.
   Targets with no image in the window are listed in the manifest as `no images in window`.
 
 ## Data gotchas found
@@ -83,8 +97,32 @@ Shared helpers are in `notebooks/ou_utils.py`. Current parameter choices (all in
   `TDS_simple_model` images and only covers the survey field and dates.
 - The transient is often several arcsec off its host (0.4 to 6.7 arcsec for the largest hosts). That is why
   cutouts are host-centred and wide; transient-centred cutouts looked "off-centre" to the user.
-- Roman cutouts come out 93 or 95 pixels square (detector pixel scales differ slightly); Rubin 101. Realised
-  widths are within about 2% of the requested size (Roman 19.96 to 20.14, Rubin about 20.2 arcsec).
+- At 20 arcsec, Roman cutouts come out 185 to 189 pixels square (about 0.108 arcsec/pixel; detector pixel scales
+  differ slightly), Rubin 101 (0.2 arcsec/pixel). An earlier note here said Roman 93 or 95, which matches
+  10 arcsec, not 20.
+- **Roman `ERR` is not an uncertainty: it is the background and noise of `SCI` without the sources**
+  (resolved 2026-10-29). roman_imsim v2.0 `detector_physics.py`: `write_fits(..., img, sky_noise, dq, ...)` puts
+  `sky_noise` into `ERR`; `finalize_sky_im` builds it from `self.sky` (sky + thermal, with Poisson noise already
+  added in `setup_sky`, the same realization added to the image in `add_background`) + `im_dark` + `im_read`
+  (the same dark and read-noise realizations added to `SCI`), /gain, rounded. Checked on a full image: `SCI - ERR`
+  is exactly 0 on 77% of pixels; SCI and ERR robust scatter both 14.83 ≈ sqrt(sky + 8.5**2) = 14.4. Headers have
+  no units; `SKY_MEAN` in the image header ≈ median ERR. Gain 1, read noise 8.5 e-, sky not subtracted in SCI.
+  (The 14.83 was a robust scatter over all pixels, sources included; on blank pixels only the prediction is exact.)
+  Rubin `VARIANCE` behaves as expected (higher on sources).
+- **Roman cutouts now have a real `VARIANCE` and save `ERR` as `BKGNOISE`** (implemented 2026-10-29, user agreed
+  the plan, the name `BKGNOISE` and inf for saturated pixels). `ou.roman_variance`:
+  `VARIANCE = (max(SCI - BKGNOISE, 0) + mean(BKGNOISE)) / gain + (read_noise / gain)**2` (galsim.roman gain 1,
+  read noise 8.5), computed from the cut arrays; one sky per cutout is enough (sky flat across a detector,
+  134.8 to 135.2 per 256x256 block). Chosen over `SCI + 8.5**2` because weights that follow the pixel noise bias
+  fits. Saturated: `SCI >= (1e5 - 5 * 8.5) / gain` = 99957.5 -> inf (pixels clip at 1e5 e- before read noise, so
+  saturated values are 99960 to 100025; ~100 per image; DQ is all zero in these simple-model files).
+  VARIANCE header: `BUNIT GAIN RDNOISE SKYEXP SATLEVEL NSAT` + formula comments; BKGNOISE header explains itself.
+  Checks done before implementing, on 2 full images: blank-sky pull std 1.000 and 1.001 (every 256-px block
+  0.99 to 1.01), no neighbour correlation. Source term: an empirical test with a "smooth neighbours" cut was
+  biased low (rejects noisy pixels) and a curvature-corrected one was dominated by structure; settled from code
+  instead: roman_imsim v2.0 `stamp.py` draws a Poisson realized flux and photon-shoots it with unit photons, or
+  draws with FFT and adds `PoissonNoise` (line 313), so source pixels are Poisson. After implementing: values
+  match an independent recomputation to 5e-8; blank-sky pull 1.01 in a cutout; saturation/NaN/clip unit-tested.
 
 ## PSFs
 
@@ -110,33 +148,49 @@ Shared helpers are in `notebooks/ou_utils.py`. Current parameter choices (all in
   Gaussian fallback (FWHM 0.7 arcsec) used silently when the stack is missing. In the per-visit SN script,
   later epochs are evaluated at the image centre, with x and y swapped, not at the target.
 
-### Planned: a PSF image in every cutout (agreed 2026-10-29, NOT implemented yet)
+### Implemented 2026-10-29: a PSF image in every cutout
 
-Two stages that pass files to each other; one PSF per cutout (per epoch), evaluated at the cutout centre (the host).
+One PSF per cutout (per epoch), evaluated at the cutout centre (the host), written as a `PSF` extension in
+the same FITS file, on the native pixel grid, odd size, centred on the central pixel, sum 1. Done inside
+`ou.run_cutouts(..., psf=True)` in the single env (the user chose this over the old CSV/script/`.npy` hand-off).
+`psf=True` with `north_up=True` raises, because the stamp is not rotated.
 
-1. desc env: make the cutouts as now, and also record each target's pixel position on the source image
-   (header and manifest), which both PSF models need.
-2. desc env: Roman PSFs with galsim. Detector (SCA) and band come from the image name, e.g.
-   `Roman_TDS_simple_model_J129_29063_9` is pointing 29063, SCA 9. Draw on the cutout's native pixel grid,
-   odd size, centred, sum 1, with the source SED.
-3. desc env: write a plain CSV of Rubin requests (source image, position, output name) and download the needed
-   `calexp` files to a local cache (a few GB for large target lists; deletable afterwards). The stack env then
-   needs no S3 access and no libraries beyond numpy.
-4. stack env, native on the Mac: a small standalone script reads the CSV, calls
-   `ExposureF.readFits(file).getPsf().computeImage(pos)`, centres and normalises the stamp on an odd grid and
-   saves one `.npy` per cutout. It can only be syntax-checked in the container; run it first on one cutout and
-   check the stamp.
-5. desc env: append a `PSF` extension to each cutout FITS (header keys: source, position, stamp scale, SED),
-   skipping cutouts that already have one, so each cutout stays one self-contained file.
+- Roman (`ou.roman_psf`): `galsim.roman.getPSF(SCA_NUM from the primary header, band, SCA_pos, wcs=local WCS
+  from the SCI header via GSFitsWCS, pupil_bin=4, n_waves=5)`, convolved with roman_imsim's charge diffusion
+  (3 Gaussians in pixels: weights 0.17519/0.53146/0.29335, sigmas 0.4522/0.8050/1.4329 x 0.3279 px, from
+  `roman_imsim/photonOps/_charge_diffusion.py` at DukeCosmology/roman_imsim HEAD, which may differ from the 2023
+  run) and the pixel response, flat-photon SED. **51x51 (5.5 arcsec)** by default (`ou.PSF_SIZE_PIX`, notebook
+  `PSF_SIZE_PIX`). History: 51, then doubled to 101 at the user's request, then halved back to 51 (also the
+  user's request). 1.2% of the PSF's light lies outside the central 51x51 (measured on a 101 px stamp), so the
+  51 px stamp, renormalised to sum 1, puts ~1% too much light in the core.
+  Drawing is behind a lock because cutouts run in threads. Header: `PSFMODEL SCA NWAVES PUPILBIN CHGDIFF PSFSED
+  SRCX SRCY PSFSCALE`.
+- Rubin (`ou.rubin_psf`): each calexp (~110 MB) is downloaded to `data/cache/`, used for both the cutouts and
+  `ExposureFitsReader(path).readPsf().computeKernelImage(Point2D(x + x0, y + y0))`, then deleted. Kernel image
+  (centred), not `computeImage` (which is shifted to the sub-pixel position). The PSFEx model only covers
+  41x41 pixels, and the stamp is now **41x41 (8.2 arcsec)**, the model's own size. History: the user first asked
+  to double it to 81 (zero-padded outside the model), worried about the padding, and settled on 41.
+  `rubin_psf(size_pix=...)` still pads with zeros if larger, crops if smaller. Checked on 43 bright unflagged
+  stars in one calexp: light at 4-8 arcsec is 0.2% +/- 1% of the total (consistent with zero), and the model's
+  r <= 2 px fraction matches the stars (0.45 vs 0.44), so 41 px loses nothing. The model falls to ~1e-3 of the
+  peak by 2 arcsec and to noise (~1e-4) by 3 arcsec. Small negative values (~1e-4 of the peak) remain from PSFEx;
+  not clipped. Header: `PSFMODEL PSFMODSZ (= 41, model size) SRCX SRCY PSFSCALE`.
+- Primary header `PSFSIZE` = stamp width; the resume check rewrites cutouts whose `PSFSIZE` differs.
+- **Tried and rejected (2026-10-29): a Gaussian Roman PSF** with the galsim PSF's FWHM (0.126 arcsec in J129,
+  measured with `calculateFWHM` before pixelisation). It matched the width but not the shape: central pixel
+  0.48 vs 0.28 of the light (J129), because the real PSF has 30-45% of its light in the wings (J129 to F184),
+  and in a 101 px stamp it looked like a dot. The user had it reverted to the full galsim PSF; the code was
+  removed, not kept as an option.
+- The user's earlier request "make the PSF 10x the FWHM" would have *shrunk* the Roman stamp (FWHM ~1.1 px);
+  after that was pointed out they chose to double both stamps instead.
+- Checked on real data (1 target, 5 epochs each): all stamps sum to 1 with the peak on the central pixel.
+  Rubin FWHM 0.68 to 1.03 arcsec across visits. Roman core FWHM about 0.10 to 0.12 arcsec. Roman orientation
+  checked against 12 unsaturated stars (peak 3000 to 40000; ~1e5 means saturated) in two images: the model as
+  drawn matches the wings best on average (r about 0.85), transposed or x-flipped clearly worse in one image;
+  central 5x5 flux fraction 0.80-0.83 (model) vs 0.81-0.85 (stars), consistent with the flat-SED placeholder.
 
-**With the single env, steps 3 and 4 can be simpler** (not yet discussed with the user): the cutout code can
-call the stack directly, so the request CSV, the separate script and the `.npy` hand-off are no longer needed.
-The calexp files still have to be read locally (`ExposureF.readFits` takes a path), so a download cache stays.
-
-Defaults agreed: everything runs natively on the Mac sharing one repo folder; PSF stored as a FITS extension
-(not separate `.npy` files); flat photon SED as a placeholder for Roman (a redder per-target SED broadens the
-PSF slightly, so revisit it if the PSF is used in fits). Keep cutouts in native orientation, because the PSF
-comes out on the detector pixel grid; for `NORTH_UP = True` the PSF would also have to be rotated.
+Still a placeholder: the flat photon SED for Roman (a redder per-target SED broadens the PSF slightly, so
+revisit it if the PSF is used in fits).
 
 ## State of the work
 
@@ -148,22 +202,27 @@ comes out on the detector pixel grid; for `NORTH_UP = True` the PSF would also h
   made by me; it was committed along with everything else.
 - `setup_on_mac.md` has the steps used to build the single stack + project env on the Mac (done and import-checked
   2026-10-29; a one-cell test notebook ran through the kernel and imported `lsst.afw`).
-- The Mac clone is fresh: no `data/` or `executed/` yet, and **none of the repo's notebooks have been run in the
-  Mac env**. So the cutout notebooks have also not been rerun since the error/quality layers were added (the
-  user had asked not to run them yet). The layer code was tested on synthetic images only.
+- Run in the Mac env on 2026-10-29: `target_selection` with the old cuts (20 targets; jupytext refused to write
+  the executed copy once because the `.md` timestamp changed mid-run, probably an editor), then `roman_cutouts`
+  and `rubin_cutouts` with `MAX_TARGETS = 1` (target 30431441, 5 epochs each, all `ok`, no NaNs, all layers plus
+  `PSF`). Then `target_selection` was rerun with the new cuts (7 targets, above), the old cutouts and manifests
+  were deleted at the user's request, and the cutout notebooks were rerun for the new first target 50084332
+  (4 Roman J129 epochs, 5 Rubin r epochs) with the doubled galsim/PSFEx stamps. Other notebooks not run on the Mac yet.
+- The user added `notebooks/explore_cutouts.md` (opens one Roman and one Rubin cutout, plots image, variance and
+  PSF) and a note in `roman_cutouts.md` that Roman `ERR` is not a 1-sigma uncertainty (it behaves like background
+  plus noise without sources; they suggest `SCI + 8.5**2` as a variance). Not yet checked by me.
+- `run_notebooks.sh` prints "DM stack could not be deactivated!" from the stack's conda scripts; harmless.
 - `jupytext.toml` excludes `widgets` from synced metadata, after tqdm progress-bar state once bloated two notebooks.
 
 ## Open items
 
-1. Run the notebooks in the Mac env (pandas 2.3 and Python 3.13 there, versus pandas 3 and 3.12 in the container):
-   `target_selection` first, then `roman_cutouts` and `rubin_cutouts`, checking the new `ERR`/`DQ` and
-   `VARIANCE`/`MASK` extensions on real data.
-2. Implement the PSF plan above: record pixel positions, galsim Roman PSFs, Rubin PSFs from the stack (decide with
-   the user whether to drop the CSV/script hand-off now that it is one env), and a `PSF` extension in each cutout.
+1. Raise `MAX_TARGETS` in `roman_cutouts` and `rubin_cutouts` once the 1-target run is accepted, and
+   run the other notebooks in the Mac env (pandas 2.3 and Python 3.13 there, versus pandas 3 and 3.12 in the container).
+   If 7 targets are too few, add TDS regions to `REGIONS` (about 6x more candidates) or relax `DELTA_MAG`.
+2. Optional PSF follow-ups: a PSF for `NORTH_UP = True` (rotate/resample the stamp); a Roman PSF check by
+   fitting stars rather than correlating; keeping calexps cached across runs if reruns get slow.
 3. Pick a better SED than the flat placeholder for Roman PSFs of real targets, if the PSF is used in fits.
 4. Optional: a minimum-image-count requirement in the coverage check; matching Roman and Rubin cutouts to an
    exactly common pixel grid if needed.
 5. Install `scarlet2` in the Mac env if needed (dry-run first; it brings jax).
 6. `TDE_light_curve_Rubin.md` is still a draft: shared `aperture_radius_pix` bug, scratch cell, no Rubin light-curve plot.
-7. The README's setup section still describes the venv and says the stack is unavailable; update it to point at
-   `setup_on_mac.md` if wanted.

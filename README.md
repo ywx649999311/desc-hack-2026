@@ -29,11 +29,19 @@ They share the helper module `notebooks/ou_utils.py`.
 | `target_selection.md` | Select transients by peak-minus-host magnitude and host half-light radius | `data/targets.parquet` (+ `targets.json` with the parameters used) |
 | `roman_cutouts.md` | Find Roman TDS images around each target's peak and save FITS cutouts | `data/cutouts/roman/<band>/<target_id>/*.fits`, `data/cutouts/roman/manifest.parquet` |
 | `rubin_cutouts.md` | The same for Rubin `calexp` images | `data/cutouts/rubin/...` |
+| `explore_cutouts.md` | Open one saved Roman and one Rubin cutout: list its HDUs and plot the image, variance and PSF | nothing |
 
-Each notebook starts with a parameters cell. The cutout notebooks default to `MAX_TARGETS = 5`;
+Each notebook starts with a parameters cell. The cutout notebooks default to `MAX_TARGETS = 1`;
 raise it (or set `None`) once the first run looks right. Cutouts keep the detector's native
-pixels by default (`NORTH_UP = False`); each FITS header carries the WCS, target ID, band and MJD.
-Every cutout also stores the error/variance and quality-flag arrays as extra extensions (Roman `ERR`, `DQ`; Rubin `VARIANCE`, `MASK`).
+pixels by default (`NORTH_UP = False`); each FITS header carries the WCS, target ID, band and MJD,
+and the cutout centre's pixel position on the source image (`SRCX`, `SRCY`).
+Every cutout also stores a variance and the quality flags, in the same HDU order for both instruments
+(Roman `SCI`, `VARIANCE`, `DQ`, then `BKGNOISE`; Rubin `IMAGE`, `VARIANCE`, `MASK`). The Roman variance is
+computed from the image (see `roman_cutouts.md`), because the Roman files' own `ERR` plane, saved as
+`BKGNOISE`, is the image's background and noise without the sources, not an uncertainty (see `explore_cutouts.md`),
+and a `PSF` extension evaluated at the cutout centre on the same pixel grid (Roman: `galsim.roman.getPSF`
+as in the simulation; Rubin: the `calexp`'s own PSF model, read with the LSST stack). Set `PSF = False`
+to skip it, which is required for `NORTH_UP = True` and when the LSST stack is not installed.
 Targets with no image in the time window are listed in the manifest, not dropped silently.
 Rubin visits are sparse in time, so some targets will have none. `data/` is gitignored.
 

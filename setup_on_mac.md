@@ -6,7 +6,8 @@ project's packages on top, so the stack's own versions are never changed.
 
 **Status:** done and checked on 2026-10-29 (macOS 27.0.1, Apple silicon, mambaforge with conda 22.9 / mamba 1.0).
 All imports work, including `lsst.afw` and `lsst.meas.extensions.psfex`, both in an activated shell and
-in a Jupyter kernel. The repo's notebooks have not been run in this environment yet.
+in a Jupyter kernel. `target_selection`, `roman_cutouts` and `rubin_cutouts` (with PSFs, 1 target) have run
+in it; the other notebooks have not yet.
 
 ## Requirements
 
@@ -92,7 +93,7 @@ jupytext --sync notebooks/*.md                         # optional: recreates the
 ```
 
 `target_selection` takes about 5 minutes (most of it the Roman and Rubin coverage check). The cutout notebooks
-default to 5 targets; each Roman or Rubin image is large, so raise `MAX_TARGETS` once the first run looks right.
+default to 1 target; each Roman or Rubin image is large, so raise `MAX_TARGETS` once the first run looks right.
 
 ## Versions and differences from `requirements-lock.txt`
 
