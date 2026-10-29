@@ -1,4 +1,4 @@
-notebook_metadata_filter="all,-language_info"
+notebook_metadata_filter="all,-language_info,-widgets"
 # Pair each MyST notebook notebooks/<name>.md with executed/<name>.ipynb (gitignored).
 # run_notebooks.sh writes its executed copies to the same path, so the twin keeps
 # the outputs. After editing an .ipynb, run `jupytext --sync executed/<name>.ipynb`

@@ -14,3 +14,7 @@ all_galaxies.h5
 fsps/
 
 __pycache__/
+
+# Notebook outputs (target list and cutouts)
+data/
+*.egg-info/

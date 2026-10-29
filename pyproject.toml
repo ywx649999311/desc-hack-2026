@@ -1,0 +1,14 @@
+# Makes the shared helper module importable from any notebook, whatever its working
+# directory (`pip install -e .`). Dependencies come from requirements*.txt.
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "desc-hack-2026"
+version = "0.1.0"
+description = "Helpers for the OpenUniverse2024 target-selection and cutout notebooks"
+
+[tool.setuptools]
+py-modules = ["ou_utils"]
+package-dir = {"" = "notebooks"}

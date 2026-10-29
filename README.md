@@ -19,6 +19,24 @@ IRSA's simulated-data SIA service, so no AWS account or local data download is n
 | `TDE_light_curve_Rubin.md` | Work in progress: the TDE notebook extended with Rubin r-band images |
 | `SED_fit.md` | Fit SEDs of supernova host galaxies with Prospector |
 
+### Target selection and cutouts pipeline
+
+Three short notebooks, run in this order, turn the transient catalog into cutout files on disk.
+They share the helper module `notebooks/ou_utils.py`.
+
+| Notebook | What it does | Writes |
+|---|---|---|
+| `target_selection.md` | Select transients by peak-minus-host magnitude and host half-light radius | `data/targets.parquet` (+ `targets.json` with the parameters used) |
+| `roman_cutouts.md` | Find Roman TDS images around each target's peak and save FITS cutouts | `data/cutouts/roman/<band>/<target_id>/*.fits`, `data/cutouts/roman/manifest.parquet` |
+| `rubin_cutouts.md` | The same for Rubin `calexp` images | `data/cutouts/rubin/...` |
+
+Each notebook starts with a parameters cell. The cutout notebooks default to `MAX_TARGETS = 5`;
+raise it (or set `None`) once the first run looks right. Cutouts keep the detector's native
+pixels by default (`NORTH_UP = False`); each FITS header carries the WCS, target ID, band and MJD.
+Every cutout also stores the error/variance and quality-flag arrays as extra extensions (Roman `ERR`, `DQ`; Rubin `VARIANCE`, `MASK`).
+Targets with no image in the time window are listed in the manifest, not dropped silently.
+Rubin visits are sparse in time, so some targets will have none. `data/` is gitignored.
+
 The notebooks are [MyST markdown](https://jupytext.readthedocs.io/en/latest/formats-markdown.html)
 files. With `jupytext` installed, JupyterLab opens them directly as notebooks
 (right-click → *Open With* → *Notebook*).
@@ -56,12 +74,25 @@ pip install -r requirements-lock.txt
 # ...or the latest compatible versions:
 # pip install -r requirements.txt
 
+# Make the shared helper module (notebooks/ou_utils.py) importable from any notebook
+pip install -e .
+
 # Register the Jupyter kernel the notebooks are set to use
 python -m ipykernel install --user --name desc-hack-2026 --display-name "Python (desc-hack-2026)"
 ```
 
 With conda instead of venv, run `conda create -n desc-hack-2026 python=3.12` and
 `conda activate desc-hack-2026`, then follow the same `pip` and `ipykernel` steps.
+
+### Optional: simulating the Roman PSF
+
+`galsim` (in `requirements.txt`) provides `galsim.roman.getPSF(SCA, bandpass)`, the model the
+Roman simulation used. The Roman PSF is chromatic, so drawing it needs a source SED. On Linux
+ARM there is no prebuilt wheel and pip compiles it, which needs the FFTW headers; the exact
+commands are in the comment in `requirements.txt`.
+
+The Rubin PSF is stored in each `calexp` image as `PsfexPsf` extensions. Evaluating it needs the
+LSST Science Pipelines (`lsst.afw`), which is not available as a conda or pip package on Linux ARM.
 
 ### Optional: running new SED fits
 

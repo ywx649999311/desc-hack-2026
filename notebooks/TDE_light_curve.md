@@ -2,13 +2,13 @@
 authors:
 - name: Jessica Krick
 - name: Jaladh Singhal
-- name: Brigitta Sipőcz
+- name: "Brigitta Sip\u0151cz"
 jupytext:
   text_representation:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.19.6
+    jupytext_version: 1.16.6
 kernelspec:
   display_name: Python (desc-hack-2026)
   language: python

@@ -35,6 +35,12 @@ dynesty<2.0.0
 # https://github.com/cconroy20/fsps (a few GB). Install it separately:
 #   pip install fsps
 
+# --- Roman PSF simulation (galsim.roman.getPSF) ---
+# On Linux ARM (aarch64) there is no prebuilt wheel, so pip builds from source and needs the
+# FFTW headers, e.g. `conda create -p ~/.local/fftw-prefix -c conda-forge fftw` and then
+#   P=~/.local/fftw-prefix FFTW_DIR=$P/lib CPPFLAGS=-I$P/include LDFLAGS="-L$P/lib -Wl,-rpath,$P/lib" pip install galsim
+galsim
+
 # --- Running the notebooks ---
 # The notebooks are MyST markdown; jupytext opens/converts them as notebooks.
 jupytext>=1.19.4
