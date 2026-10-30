@@ -5,6 +5,7 @@ Roman and Rubin simulations hosted by IRSA (public S3 bucket, no credentials nee
 Rubin PSFs need the LSST Science Pipelines (``lsst.afw``); everything else does not.
 """
 import json
+import pickle
 import threading
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import galsim
 import galsim.roman
+import h5py
 import numpy as np
 import s3fs
 import pandas as pd
@@ -638,3 +640,27 @@ def show_psfs(paths, ncols=4):
         ax.set_title(f"{band} PSF {psf.shape[0]}x{psf.shape[1]}\nFWHM ~{fwhm:.2f}\"", fontsize=8)
     fig.tight_layout()
     return fig
+
+
+# --- scarlet2 models ----------------------------------------------------------
+
+def save_scene(scene, path, id=0):
+    """Save a scarlet2 scene (or any scarlet2 module) to the HDF5 file `path`, under group `id`.
+
+    Like ``scarlet2.io.model_to_h5``, the model is pickled, but stored as a uint8 dataset
+    ``<id>/model`` instead of an HDF5 attribute: attributes are limited to 64 kB, which a
+    scene with many large sources exceeds. Overwrites an existing group `id` and keeps the
+    rest of the file. Load it with `load_scene` (``scarlet2.io.model_from_h5`` cannot read it).
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(path, "a") as f:
+        if str(id) in f:
+            del f[str(id)]
+        f.create_group(str(id)).create_dataset("model", data=np.frombuffer(pickle.dumps(scene), dtype=np.uint8))
+
+
+def load_scene(path, id=0):
+    """Load a scarlet2 model saved by `save_scene` from group `id` of the HDF5 file `path`."""
+    with h5py.File(path, "r") as f:
+        return pickle.loads(f[str(id)]["model"][()].tobytes())
