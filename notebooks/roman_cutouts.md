@@ -52,14 +52,14 @@ import ou_utils as ou
 
 ```{code-cell} ipython3
 BANDS = ["J129"]      # Roman filters to cut out, e.g. ["J129", "H158"]
-WINDOW_DAYS = 30      # keep images observed within peak_mjd +/- this many days
-MAX_EPOCHS = 5        # per target and band, evenly spaced in time
+WINDOW_DAYS = 100      # keep images observed within peak_mjd +/- this many days
+MAX_EPOCHS = 20        # per target and band, evenly spaced in time
 CUTOUT_ARCSEC = 20    # cutout width on the sky
 CENTER_ON = "host"    # "host" or "transient"; with "host" a ring marks the transient
 NORTH_UP = False      # False keeps the native pixels; True resamples onto a north-up grid
 PSF = True            # add a PSF extension at the cutout centre (needs NORTH_UP = False)
 PSF_SIZE_PIX = 51     # PSF stamp width in pixels (odd), about 5.5 arcsec
-MAX_TARGETS = 1       # None = all targets. Start small: each Roman image is large
+MAX_TARGETS = 10       # None = all targets. Start small: each Roman image is large
 ```
 
 Large hosts can be several arcseconds across, and a transient often sits well off its host's centre.
@@ -103,7 +103,12 @@ The cumulative manifest of every Roman run is `data/cutouts/roman/manifest.parqu
 
 ```{code-cell} ipython3
 saved = manifest[manifest["path"] != ""]
-ou.show_cutouts(saved["path"].head(8));
+saved_unique = saved.drop_duplicates('target_id')
+ou.show_cutouts(saved_unique["path"].head(len(saved_unique)));
+```
+
+```{code-cell} ipython3
+saved_unique['target_id']
 ```
 
 The PSF of each of the same cutouts, on a log scale.

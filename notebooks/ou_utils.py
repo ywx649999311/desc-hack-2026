@@ -308,11 +308,24 @@ def roman_psf(header0, header1, band, x, y, size_pix=PSF_SIZE_PIX["roman"]):
 
 
 def _read_rubin_psf(path):
-    """Read the PSF model and pixel origin of a local Rubin calexp with the LSST stack."""
+    """Read the PSF model, pixel origin and flux calibration of a local Rubin calexp.
+
+    Uses the LSST stack. The calibration is the calexp's mean ``PhotoCalib`` factor in nJy
+    per count (the calexp's pixel unit); it differs from visit to visit with airmass and
+    sky transparency, so fluxes from different visits are only comparable after it.
+    """
     from lsst.afw.image import ExposureFitsReader
     reader = ExposureFitsReader(str(path))
     xy0 = reader.readXY0()
-    return reader.readPsf(), (xy0.getX(), xy0.getY())
+    calib = float(reader.readPhotoCalib().getCalibrationMean())
+    return reader.readPsf(), (xy0.getX(), xy0.getY()), calib
+
+
+def _rubin_calib_keys(calib):
+    """Primary-header keywords for a Rubin cutout's flux calibration (nJy per count)."""
+    return {"BUNIT": ("count", "IMAGE unit; VARIANCE is in count**2"),
+            "CALIB": (calib, "nJy per count (calexp PhotoCalib mean)"),
+            "MAGZERO": (31.4 - 2.5 * np.log10(calib), "AB mag = MAGZERO - 2.5 log10(count)")}
 
 
 def rubin_psf(psf_model, x, y, xy0=(0, 0), size_pix=PSF_SIZE_PIX["rubin"]):
@@ -358,7 +371,8 @@ def _write_cutout(arrays, wcs, job, src_uri, src_xy, size_arcsec, north_up, cent
     The science image is the primary HDU (with the metadata keywords), followed by one
     image extension per remaining layer, all on the same pixel grid and WCS, and then
     the ``PSF`` extension if one is given. ``layer_keys`` maps a layer name to extra
-    ``(keywords, comments)`` for its header.
+    ``(keywords, comments)`` for its header; for the science image (the primary HDU) they
+    are added to the metadata keywords.
     """
     layer_keys = layer_keys or {}
     wcs_hdr = wcs.to_header(relax=True)  # relax keeps the SIP distortion terms
@@ -378,6 +392,11 @@ def _write_cutout(arrays, wcs, job, src_uri, src_xy, size_arcsec, north_up, cent
     hdr["NANFRAC"] = float(np.isnan(arrays[0]).mean())
     if psf_hdu is not None:
         hdr["PSFSIZE"] = psf_hdu.data.shape[0]  # PSF stamp width in pixels
+    keys, comments = layer_keys.get(names[0], ({}, []))
+    for key, value in keys.items():
+        hdr[key] = value
+    for line in comments:
+        hdr["COMMENT"] = line
     hdus = [fits.PrimaryHDU(arrays[0], header=hdr)]
     for arr, name in zip(arrays[1:], names[1:]):
         ext_hdr = wcs_hdr.copy()
@@ -394,13 +413,15 @@ def _write_cutout(arrays, wcs, job, src_uri, src_xy, size_arcsec, north_up, cent
     return hdr["NANFRAC"]
 
 
-def _is_current(path, size_arcsec, north_up, center_on, names, psf_size_pix=None):
-    """True if an existing cutout file was made with these settings, layers and PSF size."""
+def _is_current(path, size_arcsec, north_up, center_on, names, psf_size_pix=None, required=()):
+    """True if an existing cutout file was made with these settings, layers and PSF size,
+    and its primary header has every keyword in ``required``."""
     h = fits.getheader(path)
     return (h.get("SIZEARCS") == size_arcsec and h.get("NORTHUP") == north_up
             and h.get("CENTERON") == center_on and "SRCX" in h
             and h.get("LAYERS") == ",".join(names)
-            and ("PSF" not in names or h.get("PSFSIZE") == psf_size_pix))
+            and ("PSF" not in names or h.get("PSFSIZE") == psf_size_pix)
+            and all(key in h for key in required))
 
 
 def _download(src_uri):
@@ -421,7 +442,8 @@ def cutouts_from_image(src_uri, jobs, instrument, size_arcsec=10, north_up=False
     ``PSF`` extension evaluated at the cutout centre (see `roman_psf` and `rubin_psf`;
     ``psf_size_pix`` sets the stamp width, by default ``PSF_SIZE_PIX[instrument]``).
     Rubin images are then downloaded to
-    ``CACHE_DIR`` first, because the LSST stack reads only local files, and deleted after.
+    ``CACHE_DIR`` first, because the LSST stack reads only local files, and deleted after;
+    their flux calibration is saved too (``CALIB``, ``MAGZERO``, see `_rubin_calib_keys`).
 
     ``jobs`` are dicts with ``target_id, ra, dec, target_ra, target_dec, band, obs_id, mjd,
     path``, where ``ra, dec`` is the cutout centre. Existing files made with the same
@@ -432,12 +454,13 @@ def cutouts_from_image(src_uri, jobs, instrument, size_arcsec=10, north_up=False
     layers = CUTOUT_LAYERS[instrument]
     names = CUTOUT_ORDER[instrument] + (["PSF"] if psf else [])
     psf_size_pix = int(psf_size_pix or PSF_SIZE_PIX[instrument]) | 1
+    required = ("CALIB",) if psf and instrument == "rubin" else ()
     records, todo = [], []
     for job in jobs:
         rec = {"target_id": str(job["target_id"]), "band": job["band"], "obs_id": str(job["obs_id"]),
                "mjd": float(job["mjd"]), "path": str(job["path"]), "src_image": src_uri}
         if Path(job["path"]).exists() and _is_current(job["path"], size_arcsec, north_up, center_on, names,
-                                                      psf_size_pix):
+                                                      psf_size_pix, required):
             h = fits.getheader(job["path"])
             rec.update(status="exists", nan_frac=h.get("NANFRAC", np.nan), src_x=h["SRCX"], src_y=h["SRCY"])
             records.append(rec)
@@ -455,7 +478,7 @@ def cutouts_from_image(src_uri, jobs, instrument, size_arcsec=10, north_up=False
             wcs = WCS(hdul[layers[0][1]].header)
             data = [hdul[index].data for _, index, _ in layers]
             if local:
-                psf_model, xy0 = _read_rubin_psf(local)
+                psf_model, xy0, calib = _read_rubin_psf(local)
             for job, rec in todo:
                 try:
                     coord = SkyCoord(job["ra"], job["dec"], unit="deg")
@@ -468,6 +491,8 @@ def cutouts_from_image(src_uri, jobs, instrument, size_arcsec=10, north_up=False
                         var, keys, comments = roman_variance(cuts["SCI"][0], cuts["BKGNOISE"][0])
                         cuts["VARIANCE"] = (var, cuts["SCI"][1])
                         layer_keys["VARIANCE"] = (keys, comments)
+                    if local:
+                        layer_keys[CUTOUT_ORDER[instrument][0]] = (_rubin_calib_keys(calib), [])
                     psf_hdu = None
                     if psf and instrument == "roman":
                         psf_hdu = _psf_hdu(*roman_psf(hdul[0].header, hdul[layers[0][1]].header,

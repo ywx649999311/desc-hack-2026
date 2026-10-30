@@ -39,14 +39,14 @@ import ou_utils as ou
 
 ```{code-cell} ipython3
 BANDS = ["r"]         # Rubin filters to cut out: any of u, g, r, i, z, y
-WINDOW_DAYS = 30      # keep images observed within peak_mjd +/- this many days
-MAX_EPOCHS = 5        # per target and band, evenly spaced in time
+WINDOW_DAYS = 100      # keep images observed within peak_mjd +/- this many days
+MAX_EPOCHS = 20        # per target and band, evenly spaced in time
 CUTOUT_ARCSEC = 20    # cutout width on the sky
 CENTER_ON = "host"    # "host" or "transient"; with "host" a ring marks the transient
 NORTH_UP = False      # False keeps the native pixels; True resamples onto a north-up grid
 PSF = True            # add a PSF extension at the cutout centre (needs NORTH_UP = False and the LSST stack)
 PSF_SIZE_PIX = 41     # PSF stamp width in pixels (odd), 8.2 arcsec: the PSFEx model's own size
-MAX_TARGETS = 1       # None = all targets. Start small: each Rubin image is large
+MAX_TARGETS = 10       # None = all targets. Start small: each Rubin image is large
 ```
 
 Large hosts can be several arcseconds across, and a transient often sits well off its host's centre.
@@ -90,7 +90,8 @@ The cumulative manifest of every Rubin run is `data/cutouts/rubin/manifest.parqu
 
 ```{code-cell} ipython3
 saved = manifest[manifest["path"] != ""]
-ou.show_cutouts(saved["path"].head(8));
+saved_unique = saved.drop_duplicates('target_id')
+ou.show_cutouts(saved_unique["path"].head(len(saved_unique)));
 ```
 
 The PSF of each of the same cutouts, on a log scale; the seeing changes from visit to visit.
