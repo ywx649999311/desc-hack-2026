@@ -117,7 +117,8 @@ As installed on 2026-10-29:
   `pip install --dry-run` first so it does not upgrade numpy or other packages the stack depends on.
 - **Adding packages later:** prefer `mamba install -c conda-forge <pkg>`, so the solver respects the stack's
   pins. With pip, run `pip install --dry-run` first and check that it does not replace a conda package.
-- **The optional SED-fit step** (running new Prospector fits with FSPS) is separate; see the README.
+- **The optional SED-fit step** (running new Prospector fits with FSPS) is separate; see
+  [`NOTEBOOKS.md`](NOTEBOOKS.md#running-new-sed-fits).
 
 ## Alternative: a plain venv without the stack
 
