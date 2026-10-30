@@ -36,7 +36,8 @@ container. Full steps are in `setup_on_mac.md`.
 - `requirements.txt` (lower bounds) still describes the project's needs. `requirements-lock.txt` (exact versions,
   Python 3.12) is from the container venv and is **not** what the Mac env uses; it is kept for the plain-venv route.
   It never included the user's editable `scarlet2` and its jax stack, so do not regenerate it with a blind `pip freeze`.
-  `scarlet2` is not installed in the Mac env yet.
+  `scarlet2` is installed in the Mac env as an editable install of `other_repo/scarlet2` (0.5.2.dev, added only
+  equinox, numpyro 0.21, optax, varname and small helpers; jax 0.9.0 was already there). See "scarlet2 modelling".
 - `pip install -e .` makes `notebooks/ou_utils.py` importable from any working directory, including the
   paired notebooks in `executed/`.
 - `jupytext --execute` runs from the repo root, not the notebook folder, which is why the helper module is
@@ -192,6 +193,47 @@ the same FITS file, on the native pixel grid, odd size, centred on the central p
 Still a placeholder: the flat photon SED for Roman (a redder per-target SED broadens the PSF slightly, so
 revisit it if the PSF is used in fits).
 
+## scarlet2 modelling
+
+`other_repo/` (untracked, never commit it) holds the user's clones of `scarlet2` and `DDP3_Scarlet2_demo`.
+Notebooks, in the style of the scarlet2 how-tos (time-domain + stacking): `scarlet2_roman_joint_fit.md` (Roman
+epochs only), `scarlet2_roman_rubin_joint_fit.md` (1 Roman + all Rubin), and the pair `scarlet2_fit_roman_rubin.md`
+(fit, always with per-image astrometric shifts, Roman as reference with a 1e-4 px prior; saves to
+`data/scarlet2/<target>_roman_rubin.h5`) and `scarlet2_sample_roman_rubin.md` (NUTS via `scene.sample` for flux
+error bars). The user mainly works with target 30403008.
+
+- **Sampling the transient's pre-explosion flux does not work well: the sampler takes forever** (user, 2026-10-30).
+  Several variants were tried in the sampling notebook (all epochs free with flat, pixel-noise-wide flat, or
+  user-set normal priors around zero) and all were reverted. Current choice, in both fit and sampling: the transient
+  is fixed to zero before the catalog's `start_mjd` and only active epochs are fitted/sampled. Freeing all epochs in
+  the fit was also tried and reverted (it weakens the host flux constraint).
+- Current sampling priors: transient flux flat [-1, +2] x that epoch's total pixel sum (on the stacked image);
+  transient position Normal(catalog, 0.1"); host flux flat [0, 2 x band max total]. Shifts and all morphologies
+  are fixed at the best fit, so error bars are lower limits. `scene.sample` starts from the current (best-fit)
+  values (`init_to_value`), not numpyro's `init_to_uniform`.
+- Gotchas found (all handled in the notebooks):
+  - `scarlet2.io.model_to_h5` stores the pickled scene as an HDF5 attribute (64 kB limit); our scenes are ~0.7 MB.
+    Use `ou.save_scene` / `ou.load_scene` (pickle as a dataset).
+  - `StaticArraySpectrum` / `TransientArraySpectrum` can only be created inside `with sc2.Scene(...)`; outside,
+    replace `.data` via `.replace("data", ...)` or create them in a temporary `with sc2.Scene(scene.frame)`.
+  - Parameter names are sanitized to Python identifiers (`"center:transient"` -> `"center_transient"`); samples
+    come back under the sanitized names, so the notebooks use underscores.
+  - A freshly stacked observation has `renderer = None`; call `check_set_renderer(frame)` before setting
+    `renderer[-1].shift`.
+  - `infer.sample` evaluates the likelihood with the observation's *starting* parameter values
+    (`obs_.set(values)`, infer.py ~line 249), so observation parameters (e.g. shifts) come back as prior draws.
+    Verified on a toy; a custom numpyro model with `obs.set(samples)` recovers them. Likely a scarlet2 bug.
+  - Array morphologies (and `StarletMorphology`) ignore `center`; only profile/point-source morphologies move with
+    it. A free host position needs a shiftable wrapper (FFT shift; prototyped, not in the notebooks).
+  - `hierarchical_sources(catalog=...)` keeps only footprints containing catalog positions; the notebooks pass no
+    catalog and detect everything on the sharpest (Roman, pre-explosion) image, then double every box.
+  - Default model PSF (sigma 0.7 px) is wider than Roman's core; the notebooks use `GaussianPSF(sigma=0.5)`.
+  - Rubin cutouts need `CALIB` (nJy per count) to put visits on one flux scale; `rubin_cutouts` now writes it.
+- Unresolved: the Roman-only prototype fit had goodness of fit ~337 (expected ~1); not investigated (variance
+  model, correlated noise after resampling, or PSF mismatch are candidates). A starlet morphology with a
+  scale-dependent Cauchy prior (from the DDP3 demo) is in the Roman-only notebook but commented out; a Gaussian
+  Roman PSF was tried and rejected earlier.
+
 ## State of the work
 
 - Git: `origin` is `https://github.com/ywx649999311/desc-hack-2026.git`, branch `main`, and `gh` is logged in as
@@ -224,5 +266,6 @@ revisit it if the PSF is used in fits).
 3. Pick a better SED than the flat placeholder for Roman PSFs of real targets, if the PSF is used in fits.
 4. Optional: a minimum-image-count requirement in the coverage check; matching Roman and Rubin cutouts to an
    exactly common pixel grid if needed.
-5. Install `scarlet2` in the Mac env if needed (dry-run first; it brings jax).
+5. scarlet2: investigate the poor goodness of fit; do not retry sampling the pre-explosion transient flux without
+   a new idea (see "scarlet2 modelling"); `notebooks/figs/` (user's PDF plots) is untracked, ask before committing.
 6. `TDE_light_curve_Rubin.md` is still a draft: shared `aperture_radius_pix` bug, scratch cell, no Rubin light-curve plot.
