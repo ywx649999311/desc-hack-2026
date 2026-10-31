@@ -55,6 +55,7 @@ They need a recent scarlet2 (for `stack_observations`), installed from its GitHu
 | `scarlet2_roman_rubin_joint_fit.md` | Joint fit of one Roman image (the reference grid and the source shapes) and all Rubin epochs (calibrated to nJy), with astrometric offsets of the Rubin images relative to Roman. | nothing |
 | `scarlet2_fit_roman_rubin.md` | The Roman and Rubin fit as a first step of two: always fits the astrometric offsets, and saves the best-fit model. | `data/scarlet2/<target>_roman_rubin.h5` (scene, offsets, best-fit fluxes), `notebooks/figs/fit_<target>.pdf` |
 | `scarlet2_sample_roman_rubin.md` | The second step: loads that model and samples the posterior with NUTS (as in the scarlet2 sampling tutorial) for the transient's fluxes and position and the host's fluxes, to get uncertainties; plots the light curve with error bars. | samples added to the same `.h5` file, `notebooks/figs/lc_<target>.pdf` |
+| `scarlet2_laplace_roman_rubin.md` | A fast alternative second step, for every saved model at once: light curves with uncertainties from the Laplace approximation (exact Hessian of the host and transient amplitudes, then `scarlet2.infer.get_scene_samples`), in seconds per target; compares with the posterior samples where available. | group `laplace` added to each `.h5` file |
 
 The sampled uncertainties are conditional on what is not sampled (the morphologies, the neighbors and the astrometric offsets stay at their best fit), so they are lower limits.
 
