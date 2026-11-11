@@ -53,7 +53,7 @@ sc2.set_validation(False)
 We pick a target from the list written by `target_selection.md` and find its cutouts in the manifests of the two cutout notebooks.
 
 ```{code-cell} ipython3
-TARGET_ID = 30403008      # a target ID from data/targets.parquet; None = the first target
+TARGET_ID = 110001775      # a target ID from data/targets.parquet; None = the first target
 ROMAN_BAND = "J129"   # Roman band of the cutouts
 ROMAN_EPOCH = 0       # which Roman cutout to use, in time order (0 = earliest)
 RUBIN_BAND = "r"      # Rubin band of the cutouts
@@ -255,6 +255,10 @@ It gives every source an amplitude per channel. For a static source, we average 
 The forced photometry of the transient and the host near it is a mixture of their light, to be corrected by the fitting procedure.
 
 ```{code-cell} ipython3
+---
+jupyter:
+  outputs_hidden: true
+---
 forced_spectra = sc2.measure.forced_photometry(scene, obs_stacked)
 
 channels = model_frame.channels
