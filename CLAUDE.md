@@ -47,7 +47,7 @@ Two groups of notebooks (see `NOTEBOOKS.md` for the full table):
    - `target_selection` → `data/targets.parquet` (+ `targets.json` with the parameters used). Cuts on peak mag, peak-minus-host mag, host half-light radius, then a Roman+Rubin coverage check around peak.
    - `roman_cutouts` / `rubin_cutouts` → `data/cutouts/<instrument>/<band>/<target_id>/*.fits` + `manifest.parquet`. Both go through `ou.run_cutouts(...)`.
    - `scarlet2_fit_roman_rubin` → `data/scarlet2/<target>_roman_rubin.h5` (best-fit scene). Then either `scarlet2_sample_roman_rubin` (NUTS) or `scarlet2_laplace_roman_rubin` (Laplace approximation, all saved models) adds uncertainties to the same `.h5`.
-   - `scarlet2_roman_joint_fit`, `scarlet2_roman_rubin_joint_fit`: exploratory fits that write nothing.
+   - `scarlet2_roman_joint_fit`, `scarlet2_roman_rubin_joint_fit`, `scarlet2_roman_rubin_joint_fit_starlet` (starlet morphologies with a noise-scaled Cauchy prior): exploratory fits that write nothing.
 
 ### Cutout file contract
 
